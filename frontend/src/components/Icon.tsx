@@ -10,10 +10,8 @@ interface IconProps {
 const Icon = ({ name, className = '', style, size = 24 }: IconProps) => {
   // Sử dụng iconfly CDN
   const iconUrl = `https://iconfly.io/icon/${name}`;
-  
-  // Fallback: sử dụng SVG inline nếu cần
-  // Hoặc có thể sử dụng thư viện icon khác như react-icons, heroicons, etc.
-  
+
+
   return (
     <img
       src={iconUrl}
@@ -41,7 +39,7 @@ export const IconSVG = ({ name, className = '', size = 24 }: Omit<IconProps, 'st
   };
 
   const iconSvg = icons[name] || icons['home'];
-  
+
   return (
     <span
       className={className}
