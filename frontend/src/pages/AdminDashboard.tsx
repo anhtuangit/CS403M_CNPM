@@ -4,6 +4,26 @@ import client from '../api/client';
 import { useAppSelector } from '../hooks';
 import { Order, Property, User } from '../types';
 
+// --- Icons Components ---
+const UserGroupIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+);
+const BuildingIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+);
+const ClipboardCheckIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+);
+const CheckIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+);
+const XIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+);
+const FilterIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+);
+
 interface AdminStats {
   totalUsers: number;
   totalProperties: number;
@@ -18,6 +38,7 @@ const AdminDashboard = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [filterStatus, setFilterStatus] = useState('pending');
 
   const loadData = async () => {
     setLoading(true);
@@ -28,12 +49,11 @@ const AdminDashboard = () => {
         client.get<Property[]>('/properties', { params: { status: 'pending' } }),
         client.get<Order[]>('/admin/orders')
       ];
-      
-      // Chỉ admin mới load danh sách users
+
       if (user?.role === 'admin') {
         promises.push(client.get<User[]>('/admin/users'));
       }
-      
+
       const results = await Promise.all(promises);
       setStats(results[0].data);
       setPendingProps(results[1].data);
@@ -57,10 +77,10 @@ const AdminDashboard = () => {
   }, [user]);
 
   const handleApprove = async (id: string) => {
+    if (!window.confirm('Xác nhận duyệt tin này?')) return;
     try {
-      const { data: updatedProperty } = await client.post<Property>(`/properties/${id}/approve`);
+      await client.post<Property>(`/properties/${id}/approve`);
       toast.success('Đã duyệt tin');
-      // Cập nhật ngay lập tức: xóa khỏi pending list và cập nhật stats
       setPendingProps((prev) => prev.filter((property) => property._id !== id));
       const statsRes = await client.get<AdminStats>('/admin/stats');
       setStats(statsRes.data);
@@ -70,12 +90,11 @@ const AdminDashboard = () => {
   };
 
   const handleReject = async (id: string) => {
-    const reason = prompt('Nhập lý do từ chối');
+    const reason = prompt('Nhập lý do từ chối (bắt buộc):');
     if (!reason) return;
     try {
-      const { data: updatedProperty } = await client.post<Property>(`/properties/${id}/reject`, { reason });
+      await client.post<Property>(`/properties/${id}/reject`, { reason });
       toast.success('Đã từ chối tin');
-      // Cập nhật ngay lập tức: xóa khỏi pending list và cập nhật stats
       setPendingProps((prev) => prev.filter((property) => property._id !== id));
       const statsRes = await client.get<AdminStats>('/admin/stats');
       setStats(statsRes.data);
@@ -96,250 +115,318 @@ const AdminDashboard = () => {
   };
 
   const handleMarkPaid = async (id: string) => {
+    if (!window.confirm('Xác nhận đơn này đã thanh toán?')) return;
     try {
       await client.post(`/admin/orders/${id}/mark-paid`);
       toast.success('Đã xác nhận thanh toán');
-      loadData();
+      loadData(); // Reload to update UI accurately
     } catch (error: any) {
       toast.error(error.response?.data?.message ?? 'Không thể cập nhật đơn');
     }
   };
 
-  if (!user) {
-    return <p className="p-8 text-center text-sm text-slate-500">Đang tải thông tin người dùng...</p>;
-  }
+  const handleFilterChange = (status: string) => {
+    setFilterStatus(status);
+    if (status) {
+      client.get<Property[]>('/properties', { params: { status } })
+        .then((res) => setPendingProps(res.data))
+        .catch(() => toast.error('Không tải được danh sách'));
+    }
+  };
 
-  if (user.role !== 'admin' && user.role !== 'staff') {
-    return <p className="p-8 text-center text-sm text-slate-500">Cần quyền staff/admin để truy cập.</p>;
-  }
-
-  if (loading) {
+  if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
     return (
-      <section className="max-w-6xl mx-auto px-4 py-10">
-        <p className="text-center text-slate-500">Đang tải dữ liệu...</p>
-      </section>
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <p className="text-slate-500">Bạn không có quyền truy cập trang này.</p>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <section className="max-w-6xl mx-auto px-4 py-10">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-600 font-semibold mb-2">Lỗi khi tải dữ liệu</p>
-          <p className="text-sm text-red-500 mb-4">{error}</p>
-          <button onClick={loadData} className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">
-            Thử lại
-          </button>
-        </div>
-      </section>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4">
+        <div className="text-rose-500 font-bold">Lỗi: {error}</div>
+        <button onClick={loadData} className="px-4 py-2 bg-slate-800 text-white rounded-lg">Thử lại</button>
+      </div>
     );
   }
 
   return (
-    <section className="max-w-6xl mx-auto px-4 py-10 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold">Bảng điều khiển Admin</h1>
-        <div className="text-sm text-slate-500">
-          Vai trò: <span className="font-semibold text-slate-700">{user.role === 'admin' ? 'Quản trị viên' : 'Nhân viên'}</span>
-        </div>
-      </div>
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl shadow p-5">
-          <p className="text-sm text-slate-500">Người dùng</p>
-          <p className="text-2xl font-bold">{stats?.totalUsers ?? '...'}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow p-5">
-          <p className="text-sm text-slate-500">Tin đăng</p>
-          <p className="text-2xl font-bold">{stats?.totalProperties ?? '...'}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow p-5">
-          <p className="text-sm text-slate-500">Chờ duyệt</p>
-          <p className="text-2xl font-bold text-amber-500">{stats?.pendingProperties ?? '...'}</p>
+    <div className="min-h-screen bg-slate-50 pb-20 font-sans">
+
+      <div className="bg-slate-900 text-white pt-10 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Hệ thống Quản trị</h1>
+            <p className="text-slate-400 mt-1 flex items-center gap-2">
+              Xin chào, <span className="font-semibold text-white">{user.name}</span>
+              <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${user.role === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}>
+                {user.role}
+              </span>
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={loadData} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm transition shadow-sm">
+              Làm mới dữ liệu
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Quản lý tin đăng</h2>
-          <div className="flex items-center gap-3">
-            <select
-              className="form-select text-sm"
-              value="pending"
-              onChange={(e) => {
-                const status = e.target.value;
-                if (status) {
-                  client.get<Property[]>('/properties', { params: { status } })
-                    .then((res) => setPendingProps(res.data))
-                    .catch((err) => toast.error('Không tải được danh sách'));
-                }
-              }}
-            >
-              <option value="pending">Chờ duyệt</option>
-              <option value="approved">Đã duyệt</option>
-              <option value="rejected">Đã từ chối</option>
-              <option value="sold">Đã bán</option>
-              <option value="">Tất cả</option>
-            </select>
-            {pendingProps.length > 0 && (
-              <span className="text-sm text-slate-500">Tổng: {pendingProps.length} tin</span>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-10 space-y-8">
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-2xl p-6 shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500 mb-1">Tổng người dùng</p>
+              <h3 className="text-3xl font-extrabold text-slate-800">{loading ? '...' : stats?.totalUsers}</h3>
+            </div>
+            <div className="p-4 bg-blue-50 text-blue-600 rounded-xl">
+              <UserGroupIcon />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500 mb-1">Tổng tin đăng</p>
+              <h3 className="text-3xl font-extrabold text-slate-800">{loading ? '...' : stats?.totalProperties}</h3>
+            </div>
+            <div className="p-4 bg-emerald-50 text-emerald-600 rounded-xl">
+              <BuildingIcon />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-lg shadow-slate-200/50 border border-slate-100 flex items-center justify-between relative overflow-hidden">
+            <div className="relative z-10">
+              <p className="text-sm font-medium text-slate-500 mb-1">Tin chờ duyệt</p>
+              <h3 className="text-3xl font-extrabold text-amber-500">{loading ? '...' : stats?.pendingProperties}</h3>
+            </div>
+            <div className="p-4 bg-amber-50 text-amber-500 rounded-xl relative z-10">
+              <ClipboardCheckIcon />
+            </div>
+            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-amber-50 rounded-full opacity-50"></div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <ClipboardCheckIcon />
+              Quản lý tin đăng
+            </h2>
+
+            <div className="flex items-center gap-2">
+              <FilterIcon />
+              <select
+                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none font-medium"
+                value={filterStatus}
+                onChange={(e) => handleFilterChange(e.target.value)}
+              >
+                <option value="pending">Chờ duyệt (Pending)</option>
+                <option value="approved">Đã duyệt (Approved)</option>
+                <option value="rejected">Đã từ chối (Rejected)</option>
+                <option value="sold">Đã bán (Sold)</option>
+                <option value="">Tất cả trạng thái</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-slate-50/50 p-6">
+            {loading ? (
+              <div className="text-center py-10 text-slate-400">Đang tải dữ liệu...</div>
+            ) : pendingProps.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-200">
+                <p className="text-slate-500">Không tìm thấy tin đăng nào ở trạng thái này.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {pendingProps.map((property) => (
+                  <div key={property._id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col lg:flex-row gap-6">
+                    {/* Content */}
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between">
+                        <h3 className="text-lg font-bold text-slate-800 mb-1">{property.title}</h3>
+                        <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase border ${property.status === 'pending' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                          property.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                            property.status === 'rejected' ? 'bg-rose-100 text-rose-700 border-rose-200' :
+                              'bg-slate-100 text-slate-600'
+                          }`}>
+                          {property.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 text-sm text-slate-600">
+                        <div>
+                          <span className="block text-xs text-slate-400">Giá</span>
+                          <span className="font-bold text-blue-600">
+                            {property.price.toLocaleString('vi-VN')} {property.priceUnit === 'billion' ? 'tỷ' : 'triệu'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-xs text-slate-400">Khu vực</span>
+                          <span className="font-medium">{property.location}</span>
+                        </div>
+                        <div>
+                          <span className="block text-xs text-slate-400">Loại tin</span>
+                          <span className="capitalize">{property.listingType === 'rent' ? 'Cho thuê' : 'Bán'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-xs text-slate-400">Loại BĐS</span>
+                          <span className="capitalize">{property.propertyType}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex lg:flex-col gap-2 justify-center border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-6 min-w-[140px]">
+                      {property.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => handleApprove(property._id)}
+                            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition shadow-sm shadow-emerald-200"
+                          >
+                            <CheckIcon /> Duyệt
+                          </button>
+                          <button
+                            onClick={() => handleReject(property._id)}
+                            className="flex items-center justify-center gap-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                          >
+                            <XIcon /> Từ chối
+                          </button>
+                        </>
+                      )}
+                      <a
+                        href={`/properties/${property._id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-center gap-2 text-slate-500 hover:text-blue-600 text-sm font-medium py-1"
+                      >
+                        Xem chi tiết &rarr;
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
-        {pendingProps.length === 0 ? (
-          <p className="text-sm text-slate-500">Không có tin pending.</p>
-        ) : (
-          <div className="space-y-4">
-            {pendingProps.map((property) => {
-              const formatPrice = (price: number, unit?: string, listingType?: string) => {
-                const unitText = unit === 'billion' ? 'tỷ' : 'triệu';
-                const suffix = listingType === 'rent' ? '/tháng' : '';
-                return `${price.toLocaleString('vi-VN')} ${unitText}${suffix}`;
-              };
-              return (
-                <div key={property._id} className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center gap-4">
-                  <div className="flex-1">
-                    <p className="font-semibold">{property.title}</p>
-                    <p className="text-sm text-slate-500">{property.location}</p>
-                    <p className="text-sm">
-                      Giá: {formatPrice(property.price, property.priceUnit, property.listingType)}
-                    </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Loại: {property.listingType === 'rent' ? 'Cho thuê' : 'Bán'} | {property.propertyType}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleApprove(property._id)} 
-                      className="px-4 py-2 bg-emerald-500 text-white text-sm rounded-md hover:bg-emerald-600 transition"
-                    >
-                      Duyệt
-                    </button>
-                    <button 
-                      onClick={() => handleReject(property._id)} 
-                      className="px-4 py-2 bg-rose-500 text-white text-sm rounded-md hover:bg-rose-600 transition"
-                    >
-                      Từ chối
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
-      {user?.role === 'admin' && (
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Người dùng</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate-500">
-                <th className="py-2">Tên</th>
-                <th>Email</th>
-                <th>Vai trò</th>
-                <th>Trạng thái</th>
-                <th>Lượt miễn phí</th>
-                {user?.role === 'admin' && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {users.length === 0 ? (
-                <tr>
-                  <td colSpan={user?.role === 'admin' ? 6 : 5} className="py-4 text-center text-slate-500">
-                    Không có người dùng nào
-                  </td>
-                </tr>
-              ) : (
-                users.map((u) => (
-                  <tr key={u.id || u._id} className="border-t">
-                    <td className="py-2">{u.name}</td>
-                    <td>{u.email}</td>
-                    <td>
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                        u.role === 'staff' ? 'bg-blue-100 text-blue-700' :
-                        'bg-slate-100 text-slate-700'
-                      }`}>
-                        {u.role === 'admin' ? 'Admin' : u.role === 'staff' ? 'Staff' : 'User'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {u.status === 'active' ? 'Hoạt động' : 'Khóa'}
-                      </span>
-                    </td>
-                    <td>{u.freeListingsRemaining}</td>
-                    {user?.role === 'admin' && (
-                      <td>
-                        <button onClick={() => handleToggleUser(u.id || u._id || '')} className="text-sm text-primary underline hover:text-primary/80">
-                          {u.status === 'active' ? 'Khóa' : 'Mở khóa'}
-                        </button>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
+
+          {user.role === 'admin' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-full">
+              <div className="px-6 py-5 border-b border-slate-50">
+                <h2 className="text-lg font-bold text-slate-800">Danh sách Người dùng</h2>
+              </div>
+              <div className="flex-1 overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-3">User</th>
+                      <th className="px-6 py-3">Vai trò</th>
+                      <th className="px-6 py-3">Trạng thái</th>
+                      <th className="px-6 py-3 text-center">Slots</th>
+                      <th className="px-6 py-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {users.map((u) => (
+                      <tr key={u.id || u._id} className="hover:bg-slate-50/50 transition">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-slate-800">{u.name}</div>
+                          <div className="text-xs text-slate-500">{u.email}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                            u.role === 'staff' ? 'bg-blue-100 text-blue-700' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-semibold ${u.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'active' ? 'bg-green-600' : 'bg-red-600'}`}></span>
+                            {u.status === 'active' ? 'Active' : 'Locked'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center font-mono text-slate-600">
+                          {u.freeListingsRemaining}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleToggleUser(u.id || u._id || '')}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            {u.status === 'active' ? 'Khóa TK' : 'Mở khóa'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-full">
+            <div className="px-6 py-5 border-b border-slate-50">
+              <h2 className="text-lg font-bold text-slate-800">Đơn hàng gần đây</h2>
+            </div>
+            <div className="flex-1 overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-3">Khách hàng</th>
+                    <th className="px-6 py-3">Gói & Giá</th>
+                    <th className="px-6 py-3">Trạng thái</th>
+                    <th className="px-6 py-3">Xử lý</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {orders.map((order) => (
+                    <tr key={order._id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-6 py-4 text-slate-700">
+                        {order.user?.email ?? 'Unknown'}
                       </td>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      )}
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-slate-800">{order.package?.name ?? 'N/A'}</div>
+                        <div className="text-xs text-slate-500">{order.amount.toLocaleString('vi-VN')} đ</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded text-xs font-bold capitalize ${order.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                          order.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                            'bg-slate-100 text-slate-500'
+                          }`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {order.status !== 'paid' && (
+                          <button
+                            onClick={() => handleMarkPaid(order._id)}
+                            className="text-xs font-semibold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded hover:bg-emerald-100 transition border border-emerald-100"
+                          >
+                            Xác nhận thu tiền
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {orders.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-slate-400">Không có đơn hàng nào</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Đơn mua gói</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left text-slate-500">
-              <tr>
-                <th className="py-2">Người mua</th>
-                <th>Gói</th>
-                <th>Số tiền</th>
-                <th>Trạng thái</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center text-slate-500">
-                    Không có đơn hàng nào
-                  </td>
-                </tr>
-              ) : (
-                orders.map((order) => (
-                  <tr key={order._id} className="border-t">
-                    <td className="py-2">{order.user?.email ?? '---'}</td>
-                    <td>{order.package?.name ?? 'N/A'}</td>
-                    <td>{order.amount.toLocaleString('vi-VN')} đ</td>
-                    <td>
-                      <span className={`px-2 py-1 rounded text-xs capitalize ${
-                        order.status === 'paid' ? 'bg-green-100 text-green-700' :
-                        order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {order.status === 'paid' ? 'Đã thanh toán' : order.status === 'pending' ? 'Chờ thanh toán' : 'Đã hủy'}
-                      </span>
-                    </td>
-                    <td>
-                      {order.status !== 'paid' && (
-                        <button onClick={() => handleMarkPaid(order._id)} className="text-sm text-emerald-600 underline hover:text-emerald-700">
-                          Đánh dấu đã thanh toán
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
-    </section>
+    </div>
   );
 };
 
 export default AdminDashboard;
-
